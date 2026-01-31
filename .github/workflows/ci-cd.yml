@@ -1,32 +1,18 @@
 name: Enterprise CI/CD Pipeline
-
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-
 permissions:
   contents: read
   pages: write
   id-token: write
-
 jobs:
-  audit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Use Node.js LTS
-        uses: actions/setup-node@v4
-        with:
-          node-version: 'lts/*'
-      - name: Security Audit (Root)
-        run: npm audit --audit-level=high
-
-  build:
-    needs: audit
+  build-and-audit:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         framework: [ 'Alpine App', 'Angular App', 'Lit App', 'Mithril App', 'React App', 'Solid App', 'Stencil App', 'Svelte App', 'Vanilla App', 'Vue App' ]
     steps:
@@ -37,31 +23,30 @@ jobs:
           node-version: 'lts/*'
           cache: 'npm'
           cache-dependency-path: './${{ matrix.framework }}/package-lock.json'
-
       - name: Install dependencies
         working-directory: './${{ matrix.framework }}'
         run: npm ci
-
+      - name: Security Audit
+        working-directory: './${{ matrix.framework }}'
+        run: npm audit --audit-level=high
       - name: Build
         working-directory: './${{ matrix.framework }}'
         run: |
-          if npm run | grep -q "build"; then
+          if grep -q "build" package.json; then
             npm run build
           else
             echo "No build script found, creating dist..."
             mkdir -p dist
-            cp index.html dist/ || true
+            cp index.html dist/ 2>/dev/null || true
           fi
-
       - name: Upload Artifact
         uses: actions/upload-pages-artifact@v3
         with:
           name: ${{ matrix.framework }}
           path: './${{ matrix.framework }}/dist/'
           retention-days: 1
-
   deploy:
-    needs: build
+    needs: build-and-audit
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -71,25 +56,43 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: all-frameworks
-
       - name: Prepare Final Dist
         run: |
           mkdir final-dist
-          for dir in all-frameworks/*/; do
+          # Process each downloaded artifact
+          find all-frameworks -maxdepth 1 -mindepth 1 -type d | while read dir; do
             framework=$(basename "$dir")
             # Map framework names to URL-friendly versions
             target=$(echo "$framework" | sed 's/ App//g' | tr '[:upper:]' '[:lower:]')
             mkdir -p "final-dist/$target"
-            cp -r "$dir"* "final-dist/$target/"
+            cp -r "$dir/"* "final-dist/$target/"
           done
-          # Create a basic index for root if it doesn't exist
-          echo "<html><body><h1>Enterprise Todo System</h1><ul><li><a href='./react'>React</a></li><li><a href='./vue'>Vue</a></li></ul></body></html>" > final-dist/index.html
-
+          # Create a root index.html for the deployment
+          cat <<EOF > final-dist/index.html
+          <!DOCTYPE html>
+          <html>
+          <head><title>Enterprise Todo System</title></head>
+          <body>
+            <h1>Enterprise Multi-Framework Todo System</h1>
+            <ul>
+              <li><a href="./alpine">Alpine</a></li>
+              <li><a href="./angular">Angular</a></li>
+              <li><a href="./lit">Lit</a></li>
+              <li><a href="./mithril">Mithril</a></li>
+              <li><a href="./react">React</a></li>
+              <li><a href="./solid">Solid</a></li>
+              <li><a href="./stencil">Stencil</a></li>
+              <li><a href="./svelte">Svelte</a></li>
+              <li><a href="./vanilla">Vanilla</a></li>
+              <li><a href="./vue">Vue</a></li>
+            </ul>
+          </body>
+          </html>
+          EOF
       - name: Upload Complete Artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: final-dist/
-
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
