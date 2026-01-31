@@ -1,0 +1,1 @@
+{"version":3,"file":"lit-app.js","sourceRoot":"","sources":["../lit-app.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,MAAM,EAAE,MAAM,iBAAiB,CAAC;AAEzC,MAAM,CAAC,cAAc,CAAC,MAAM,CAAC,SAAS,EAAE,MAAM,CAAC,CAAC","sourcesContent":["import { LitApp } from './src/LitApp.js';\n\nwindow.customElements.define('lit-app', LitApp);\n"]}
